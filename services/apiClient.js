@@ -48,10 +48,13 @@ apiClient.interceptors.response.use(
         // Optionally redirect to login page
         // You can implement this later when you have routing set up
         console.warn('Unauthorized access. Token may be expired.');
+      } else if (status === 403) {
+        // Handle forbidden responses (403) - less verbose logging
+        console.warn('Access forbidden:', data?.message || 'Insufficient permissions');
+      } else {
+        // Handle other error statuses
+        console.error(`API Error ${status}:`, data?.message || 'Unknown error');
       }
-      
-      // Handle other error statuses
-      console.error(`API Error ${status}:`, data?.message || 'Unknown error');
     } else if (error.request) {
       // The request was made but no response was received
       console.error('Network Error: No response received from server');

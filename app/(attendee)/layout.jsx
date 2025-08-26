@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import { Button } from "@/components/ui/button";
@@ -7,7 +9,16 @@ import Link from "next/link";
 import { Calendar } from "lucide-react";
 
 export default function AttendeeLayout({ children }) {
-  const { logout } = useAuth();
+  const { user, loading, logout } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    // If user is loaded and is an admin, redirect them to admin dashboard
+    if (!loading && user && user.role === 'ADMINISTRATOR') {
+      router.push('/admin-dashboard');
+    }
+  }, [user, loading, router]);
+
   return (
     <ProtectedRoute>
       <div className="flex flex-col min-h-screen">
