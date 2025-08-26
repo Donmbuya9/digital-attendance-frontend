@@ -1,5 +1,7 @@
 "use client";
 
+import { useState, useEffect } from "react";
+import apiClient from "@/services/apiClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { 
@@ -16,17 +18,64 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CalendarIcon, ClockIcon } from "lucide-react";
 
-// Mock data to build the UI
-const mockEvents = [
-  { id: '1', title: 'Java Fundamentals - Lecture 1', startTime: '2023-11-15T09:00:00Z', group: { name: 'Java IPT - Fall 2023' }, venue: { name: 'Main Auditorium' } },
-  { id: '2', title: 'Data Visualization with Python', startTime: '2023-11-16T14:00:00Z', group: { name: 'Data Science Workshop' }, venue: { name: 'Computer Lab 3' } },
-];
-
-const mockGroups = [ {id: 'g1', name: 'Java IPT - Fall 2023'}, {id: 'g2', name: 'Data Science Workshop'} ];
-const mockVenues = [ {id: 'v1', name: 'Main Auditorium'}, {id: 'v2', name: 'Computer Lab 3'} ];
+const emptyEventForm = { title: '', description: '', venueId: '', groupId: '', startTime: '', endTime: '' };
 
 export default function EventsPage() {
-  // Logic will be added in the next task
+  const [events, setEvents] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [venues, setVenues] = useState([]);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [newEventData, setNewEventData] = useState(emptyEventForm);
+
+  // Function to fetch all necessary data
+  const fetchData = async () => {
+    try {
+      // Promise.all allows us to run API calls in parallel for efficiency
+      const [eventsRes, groupsRes, venuesRes] = await Promise.all([
+        apiClient.get("/events"),
+        apiClient.get("/groups"),
+        apiClient.get("/venues"),
+      ]);
+      setEvents(eventsRes.data);
+      setGroups(groupsRes.data);
+      setVenues(venuesRes.data);
+    } catch (error) {
+      console.error("Failed to fetch data:", error);
+    }
+  };
+
+  // Fetch data when the component mounts
+  useEffect(() => {
+    fetchData();
+  }, []);
+  
+  const handleInputChange = (e) => {
+    const { id, value } = e.target;
+    setNewEventData({ ...newEventData, [id]: value });
+  };
+
+  const handleSelectChange = (name, value) => {
+    setNewEventData({ ...newEventData, [name]: value });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      // Convert local datetime string to ISO 8601 format for the backend
+      const payload = {
+        ...newEventData,
+        startTime: new Date(newEventData.startTime).toISOString(),
+        endTime: new Date(newEventData.endTime).toISOString(),
+      };
+      await apiClient.post("/events", payload);
+      setIsDialogOpen(false); // Close dialog
+      setNewEventData(emptyEventForm); // Reset form
+      fetchData(); // Refresh the event list
+    } catch (error) {
+      console.error("Failed to create event:", error);
+      // Add user-facing error handling (e.g., a toast notification)
+    }
+  };
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
@@ -34,66 +83,91 @@ export default function EventsPage() {
           <h1 className="text-3xl font-bold">Events</h1>
           <p className="text-gray-600 mt-2">Schedule and manage events</p>
         </div>
-        <Dialog>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button>Schedule Event</Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>Schedule New Event</DialogTitle>
-              <DialogDescription>Fill in the details to create a new event.</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="title">Event Title</Label>
-                <Input id="title" placeholder="e.g., Introduction to Spring Boot" />
+            <form onSubmit={handleSubmit}>
+              <DialogHeader>
+                <DialogTitle>Schedule New Event</DialogTitle>
+                <DialogDescription>Fill in the details to create a new event.</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="title">Event Title</Label>
+                  <Input 
+                    id="title" 
+                    placeholder="e.g., Introduction to Spring Boot" 
+                    value={newEventData.title} 
+                    onChange={handleInputChange}
+                    required
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Input 
+                    id="description" 
+                    placeholder="Optional description of the event" 
+                    value={newEventData.description} 
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                        <Label>Venue</Label>
+                        <Select onValueChange={(value) => handleSelectChange('venueId', value)}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a venue" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {venues.map(v => (
+                              <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="grid gap-2">
+                        <Label>Group</Label>
+                        <Select onValueChange={(value) => handleSelectChange('groupId', value)}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a group" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {groups.map(g => (
+                              <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                        <Label>Start Time</Label>
+                        <Input 
+                          id="startTime" 
+                          type="datetime-local" 
+                          value={newEventData.startTime} 
+                          onChange={handleInputChange}
+                          required
+                        />
+                    </div>
+                    <div className="grid gap-2">
+                        <Label>End Time</Label>
+                        <Input 
+                          id="endTime" 
+                          type="datetime-local" 
+                          value={newEventData.endTime} 
+                          onChange={handleInputChange}
+                          required
+                        />
+                    </div>
+                </div>
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="description">Description</Label>
-                <Input id="description" placeholder="Optional description of the event" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                      <Label>Venue</Label>
-                      <Select>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a venue" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {mockVenues.map(v => (
-                            <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                  </div>
-                  <div className="grid gap-2">
-                      <Label>Group</Label>
-                      <Select>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a group" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {mockGroups.map(g => (
-                            <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                  </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                      <Label>Start Time</Label>
-                      <Input id="startTime" type="datetime-local" />
-                  </div>
-                  <div className="grid gap-2">
-                      <Label>End Time</Label>
-                      <Input id="endTime" type="datetime-local" />
-                  </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="submit">Save Event</Button>
-            </DialogFooter>
+              <DialogFooter>
+                <Button type="submit">Save Event</Button>
+              </DialogFooter>
+            </form>
           </DialogContent>
         </Dialog>
       </div>
@@ -105,31 +179,25 @@ export default function EventsPage() {
               <CardDescription>View and manage scheduled events</CardDescription>
           </CardHeader>
           <CardContent>
-              {mockEvents.length === 0 ? (
+              {events.length === 0 ? (
                 <div className="text-center py-12">
                   <p className="text-gray-500 mb-4">No events scheduled</p>
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button variant="outline">Schedule Your First Event</Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-[500px]">
-                      <DialogHeader>
-                        <DialogTitle>Schedule New Event</DialogTitle>
-                        <DialogDescription>Fill in the details to create a new event.</DialogDescription>
-                      </DialogHeader>
-                      {/* Form would be duplicated here - will be handled in next task */}
-                    </DialogContent>
-                  </Dialog>
+                  <Button variant="outline" onClick={() => setIsDialogOpen(true)}>
+                    Schedule Your First Event
+                  </Button>
                 </div>
               ) : (
                 <ul className="space-y-4">
-                    {mockEvents.map(event => (
+                    {events.map(event => (
                         <li key={event.id} className="p-4 border rounded-lg flex items-center justify-between hover:bg-gray-50 transition-colors">
                             <div>
                                 <h3 className="font-semibold text-lg">{event.title}</h3>
                                 <p className="text-sm text-gray-500 mt-1">
-                                  <span className="font-medium">{event.group.name}</span> @ <span className="font-medium">{event.venue.name}</span>
+                                  <span className="font-medium">{event.group?.name || 'No Group'}</span> @ <span className="font-medium">{event.venue?.name || 'No Venue'}</span>
                                 </p>
+                                {event.description && (
+                                  <p className="text-sm text-gray-600 mt-1">{event.description}</p>
+                                )}
                             </div>
                             <div className="text-sm text-gray-500 flex items-center gap-4">
                                 <div className="flex items-center gap-1">
