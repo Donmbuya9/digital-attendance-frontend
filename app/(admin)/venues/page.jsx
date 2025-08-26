@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import apiClient from "@/services/apiClient";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -16,129 +17,104 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Plus, Edit, Trash2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { MoreHorizontal } from "lucide-react";
 
-// Placeholder data to build the UI
-const mockVenues = [
-  { id: '1', name: 'Main Auditorium', latitude: -6.77, longitude: 39.23, radius: 50 },
-  { id: '2', name: 'Computer Lab 3', latitude: -6.78, longitude: 39.24, radius: 25 },
-  { id: '3', name: 'Conference Room A', latitude: -6.76, longitude: 39.25, radius: 30 },
-  { id: '4', name: 'Library Study Hall', latitude: -6.79, longitude: 39.22, radius: 40 },
-];
+const emptyVenue = { name: '', latitude: '', longitude: '', radius: '' };
 
 export default function VenuesPage() {
+  const [venues, setVenues] = useState([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    latitude: '',
-    longitude: '',
-    radius: ''
-  });
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [currentVenue, setCurrentVenue] = useState(emptyVenue);
+  const [editingId, setEditingId] = useState(null); // null for 'Add' mode, id for 'Edit' mode
+  const [deletingId, setDeletingId] = useState(null); // Track which venue is being deleted
+
+  // Function to fetch all venues
+  const fetchVenues = async () => {
+    try {
+      const response = await apiClient.get("/venues");
+      setVenues(response.data);
+    } catch (error) {
+      console.error("Failed to fetch venues:", error);
+      // Handle error (e.g., show a toast notification)
+    }
+  };
+
+  // Fetch venues when the component mounts
+  useEffect(() => {
+    fetchVenues();
+  }, []);
 
   const handleInputChange = (e) => {
     const { id, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [id]: value
-    }));
+    setCurrentVenue({ ...currentVenue, [id]: value });
   };
 
-  const handleSaveVenue = () => {
-    // For now, just close the dialog and reset form
-    console.log('Saving venue:', formData);
-    setIsDialogOpen(false);
-    setFormData({ name: '', latitude: '', longitude: '', radius: '' });
+  const handleAddNew = () => {
+    setEditingId(null);
+    setCurrentVenue(emptyVenue);
+    setIsDialogOpen(true);
+  };
+
+  const handleEdit = (venue) => {
+    setEditingId(venue.id);
+    setCurrentVenue(venue);
+    setIsDialogOpen(true);
+  };
+
+  const handleDelete = async (id) => {
+    setDeletingId(id);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    try {
+      await apiClient.delete(`/venues/${deletingId}`);
+      fetchVenues(); // Refresh the list
+      setIsDeleteDialogOpen(false);
+      setDeletingId(null);
+    } catch (error) {
+      console.error("Failed to delete venue:", error);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingId) {
+        // Update existing venue
+        await apiClient.put(`/venues/${editingId}`, currentVenue);
+      } else {
+        // Create new venue
+        await apiClient.post("/venues", currentVenue);
+      }
+      fetchVenues(); // Refresh the list
+      setIsDialogOpen(false); // Close the dialog
+    } catch (error) {
+      console.error("Failed to save venue:", error);
+    }
   };
 
   return (
     <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold">Venues</h1>
           <p className="text-gray-600 mt-2">Manage attendance venues and locations</p>
         </div>
-        {/* Dialog Trigger Button */}
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Venue
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
-              <DialogTitle>Add New Venue</DialogTitle>
-              <DialogDescription>
-                Fill in the details for the new venue. Click save when you're done.
-              </DialogDescription>
-            </DialogHeader>
-            {/* Form inside the Dialog */}
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="name" className="text-right">Name</Label>
-                <Input 
-                  id="name" 
-                  placeholder="e.g., Main Hall" 
-                  className="col-span-3"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="latitude" className="text-right">Latitude</Label>
-                <Input 
-                  id="latitude" 
-                  type="number" 
-                  step="any" 
-                  placeholder="-6.7766" 
-                  className="col-span-3"
-                  value={formData.latitude}
-                  onChange={handleInputChange}
-                />
-              </div>
-               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="longitude" className="text-right">Longitude</Label>
-                <Input 
-                  id="longitude" 
-                  type="number" 
-                  step="any" 
-                  placeholder="39.2312" 
-                  className="col-span-3"
-                  value={formData.longitude}
-                  onChange={handleInputChange}
-                />
-              </div>
-               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="radius" className="text-right">Radius (m)</Label>
-                <Input 
-                  id="radius" 
-                  type="number" 
-                  placeholder="50" 
-                  className="col-span-3"
-                  value={formData.radius}
-                  onChange={handleInputChange}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="submit" onClick={handleSaveVenue}>Save Venue</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <Button onClick={handleAddNew}>Add Venue</Button>
       </div>
 
-      {/* Venues Table */}
       <div className="border shadow-sm rounded-lg">
         <Table>
           <TableHeader>
@@ -151,7 +127,7 @@ export default function VenuesPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {mockVenues.map((venue) => (
+            {venues.map((venue) => (
               <TableRow key={venue.id}>
                 <TableCell className="font-medium">{venue.name}</TableCell>
                 <TableCell>{venue.latitude}</TableCell>
@@ -161,19 +137,12 @@ export default function VenuesPage() {
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" className="h-8 w-8 p-0">
-                        <span className="sr-only">Open menu</span>
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem>
-                        <Edit className="mr-2 h-4 w-4" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="text-red-600">
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete
-                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleEdit(venue)}>Edit</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleDelete(venue.id)} className="text-red-500">Delete</DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>
@@ -183,15 +152,75 @@ export default function VenuesPage() {
         </Table>
       </div>
 
-      {mockVenues.length === 0 && (
+      {venues.length === 0 && (
         <div className="text-center py-12">
           <p className="text-gray-500 mb-4">No venues found</p>
-          <Button variant="outline">
-            <Plus className="w-4 h-4 mr-2" />
+          <Button variant="outline" onClick={handleAddNew}>
             Add Your First Venue
           </Button>
         </div>
       )}
+
+      {/* Dialog for Add/Edit */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <form onSubmit={handleSubmit}>
+            <DialogHeader>
+              <DialogTitle>{editingId ? 'Edit Venue' : 'Add New Venue'}</DialogTitle>
+              <DialogDescription>
+                Fill in the details for the venue. Click save when you're done.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="name" className="text-right">Name</Label>
+                <Input id="name" value={currentVenue.name} onChange={handleInputChange} className="col-span-3" required />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="latitude" className="text-right">Latitude</Label>
+                <Input id="latitude" type="number" step="any" value={currentVenue.latitude} onChange={handleInputChange} className="col-span-3" required />
+              </div>
+               <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="longitude" className="text-right">Longitude</Label>
+                <Input id="longitude" type="number" step="any" value={currentVenue.longitude} onChange={handleInputChange} className="col-span-3" required />
+              </div>
+               <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="radius" className="text-right">Radius (m)</Label>
+                <Input id="radius" type="number" value={currentVenue.radius} onChange={handleInputChange} className="col-span-3" required />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="submit">Save changes</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Delete Venue</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this venue? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setIsDeleteDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={confirmDelete}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
