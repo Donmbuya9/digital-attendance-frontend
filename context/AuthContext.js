@@ -45,9 +45,9 @@ export const AuthProvider = ({ children }) => {
     // --- THIS IS THE CRITICAL FIX FOR REDIRECTION ---
     // Redirect based on the user's role.
     if (userData.role === 'ADMINISTRATOR') {
-      router.push('/dashboard'); // Or your admin home page
+      router.push('/admin-dashboard'); // Admin dashboard
     } else {
-      router.push('/my-events'); // Or your attendee home page
+      router.push('/my-events'); // Attendee dashboard
     }
   };
 
