@@ -9,17 +9,21 @@ const ProtectedRoute = ({ children }) => {
   const router = useRouter();
 
   useEffect(() => {
-    // Wait until the loading is finished before checking for user
+    // This effect runs whenever the loading or user state changes.
+    // We only want to redirect if the initial loading is complete AND there is no user.
     if (!loading && !user) {
       router.push('/login');
     }
   }, [user, loading, router]);
 
-  // Show loading state while checking authentication
-  if (loading) {
+  // While the initial check is running (loading is true),
+  // or if we have finished loading but there is no user yet,
+  // we show a loading screen. This prevents the redirect loop.
+  if (loading || !user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
+          {/* A simple spinner for loading feedback */}
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
           <p className="mt-2 text-gray-600">Loading...</p>
         </div>
@@ -27,12 +31,8 @@ const ProtectedRoute = ({ children }) => {
     );
   }
 
-  // If user is not authenticated, don't render children (redirect will happen in useEffect)
-  if (!user) {
-    return null;
-  }
-
-  // User is authenticated, render the protected content
+  // If loading is finished and a user object exists,
+  // we can safely render the protected page content.
   return children;
 };
 

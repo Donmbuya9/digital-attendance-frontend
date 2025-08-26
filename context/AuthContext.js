@@ -4,42 +4,51 @@ import { createContext, useContext, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import apiClient from '@/services/apiClient';
 
-// Create the AuthContext
 const AuthContext = createContext();
 
-// AuthProvider component
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // Default to true to show loading state initially
   const router = useRouter();
 
   useEffect(() => {
-    // This effect runs once on app load to check if a user is already logged in.
     const token = localStorage.getItem('authToken');
     if (token) {
+      // If a token exists, we must verify it.
       apiClient.get('/auth/me')
         .then(response => {
           setUser(response.data);
         })
         .catch(() => {
-          // Token is invalid or expired
+          // If the token is invalid (e.g., expired), clear it.
           localStorage.removeItem('authToken');
           setUser(null);
         })
         .finally(() => {
+          // We are done with the initial check.
           setLoading(false);
         });
     } else {
+      // No token found, so we are not logged in. Stop loading.
       setLoading(false);
     }
-  }, []);
+  }, []); // The empty dependency array ensures this runs only once on mount.
 
   const login = async (email, password) => {
+    // This function will be called from the login page.
     const response = await apiClient.post('/auth/login', { email, password });
-    const { token, user: userData } = response.data; // Assuming API returns user info on login
+    const { token, user: userData } = response.data;
+
     localStorage.setItem('authToken', token);
-    setUser(userData);
-    router.push('/dashboard');
+    setUser(userData); // Set the user state immediately.
+
+    // --- THIS IS THE CRITICAL FIX FOR REDIRECTION ---
+    // Redirect based on the user's role.
+    if (userData.role === 'ADMINISTRATOR') {
+      router.push('/dashboard'); // Or your admin home page
+    } else {
+      router.push('/my-events'); // Or your attendee home page
+    }
   };
 
   const logout = () => {
@@ -48,21 +57,13 @@ export const AuthProvider = ({ children }) => {
     router.push('/login');
   };
 
-  const authContextValue = {
-    user,
-    loading,
-    login, // We can refactor LoginPage to use this later
-    logout,
-  };
-
   return (
-    <AuthContext.Provider value={authContextValue}>
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-// Custom hook to use the AuthContext
 export const useAuth = () => {
   return useContext(AuthContext);
 };
