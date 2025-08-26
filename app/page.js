@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import Link from "next/link";
 
 export default function Home() {
   return (
@@ -18,8 +19,13 @@ export default function Home() {
             ✅ Shadcn UI Components<br/>
             ✅ Development server running
           </div>
-          <div className="text-center">
-            <Button className="w-full">Ready for Development!</Button>
+          <div className="flex flex-col gap-2">
+            <Link href="/register">
+              <Button className="w-full">Create Account</Button>
+            </Link>
+            <Link href="/login">
+              <Button variant="outline" className="w-full">Login</Button>
+            </Link>
           </div>
         </CardContent>
       </Card>
