@@ -25,6 +25,7 @@ import {
   MapPin,
   UserCheck,
   Calendar,
+  Activity,
   LogOut,
   Menu,
 } from "lucide-react";
@@ -35,6 +36,7 @@ const navigation = [
   { name: "Venues", href: "/venues", icon: MapPin },
   { name: "Groups", href: "/groups", icon: UserCheck },
   { name: "Events", href: "/events", icon: Calendar },
+  { name: "Live Attendance", href: "/live-attendance", icon: Activity },
 ];
 
 function AdminLayoutContent({ children }) {
