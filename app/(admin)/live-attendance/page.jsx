@@ -1,85 +1,25 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useEffect, useCallback } from "react";
+import apiClient from "@/services/apiClient";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar, Clock, MapPin, Users, CheckCircle, XCircle } from 'lucide-react';
-
-// Mock data for demonstration
-const mockEvents = [
-  {
-    id: 1,
-    title: "Weekly Team Meeting",
-    startTime: "2025-08-26T10:00:00Z",
-    endTime: "2025-08-26T11:00:00Z",
-    venue: { id: 1, name: "Conference Room A", latitude: 40.7128, longitude: -74.0060, radius: 50 },
-    group: { id: 1, name: "Development Team" },
-    status: "ongoing"
-  },
-  {
-    id: 2,
-    title: "Project Review",
-    startTime: "2025-08-26T14:00:00Z",
-    endTime: "2025-08-26T16:00:00Z",
-    venue: { id: 2, name: "Main Auditorium", latitude: 40.7580, longitude: -73.9855, radius: 100 },
-    group: { id: 2, name: "All Staff" },
-    status: "upcoming"
-  },
-  {
-    id: 3,
-    title: "Training Session",
-    startTime: "2025-08-25T09:00:00Z",
-    endTime: "2025-08-25T17:00:00Z",
-    venue: { id: 3, name: "Training Room", latitude: 40.7614, longitude: -73.9776, radius: 30 },
-    group: { id: 3, name: "New Hires" },
-    status: "completed"
-  }
-];
-
-const mockAttendances = [
-  {
-    id: 1,
-    eventId: 1,
-    user: { id: 1, name: "John Doe", email: "john@example.com" },
-    checkInTime: "2025-08-26T10:05:00Z",
-    checkOutTime: null,
-    status: "present",
-    location: { latitude: 40.7128, longitude: -74.0060 }
-  },
-  {
-    id: 2,
-    eventId: 1,
-    user: { id: 2, name: "Jane Smith", email: "jane@example.com" },
-    checkInTime: "2025-08-26T10:02:00Z",
-    checkOutTime: "2025-08-26T10:45:00Z",
-    status: "checked_out",
-    location: { latitude: 40.7128, longitude: -74.0059 }
-  },
-  {
-    id: 3,
-    eventId: 1,
-    user: { id: 3, name: "Bob Johnson", email: "bob@example.com" },
-    checkInTime: null,
-    checkOutTime: null,
-    status: "absent",
-    location: null
-  },
-  {
-    id: 4,
-    eventId: 1,
-    user: { id: 4, name: "Alice Brown", email: "alice@example.com" },
-    checkInTime: "2025-08-26T10:15:00Z",
-    checkOutTime: null,
-    status: "late",
-    location: { latitude: 40.7129, longitude: -74.0061 }
-  }
-];
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Calendar, Clock, MapPin, Users, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
 
 export default function LiveAttendancePage() {
-  const [selectedEvent, setSelectedEvent] = useState(mockEvents[0]);
-  const [attendances, setAttendances] = useState(mockAttendances);
+  const [events, setEvents] = useState([]);
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [eventDetails, setEventDetails] = useState(null);
+  const [attendanceCode, setAttendanceCode] = useState(null);
+  const [isCodeDialogOpen, setIsCodeDialogOpen] = useState(false);
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isPolling, setIsPolling] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
 
   // Update current time every minute
@@ -91,34 +31,109 @@ export default function LiveAttendancePage() {
     return () => clearInterval(timer);
   }, []);
 
-  // Filter attendances for selected event
-  const eventAttendances = attendances.filter(att => att.eventId === selectedEvent.id);
+  // Fetch all events for selection
+  useEffect(() => {
+    const fetchEvents = async () => {
+      try {
+        const response = await apiClient.get('/events');
+        setEvents(response.data);
+        if (response.data.length > 0) {
+          setSelectedEvent(response.data[0]);
+        }
+      } catch (error) {
+        console.error('Error fetching events:', error);
+        setError('Failed to load events');
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-  // Calculate statistics
-  const totalExpected = eventAttendances.length;
-  const present = eventAttendances.filter(att => att.status === 'present' || att.status === 'checked_out').length;
-  const late = eventAttendances.filter(att => att.status === 'late').length;
-  const absent = eventAttendances.filter(att => att.status === 'absent').length;
+    fetchEvents();
+  }, []);
+
+  // Fetch event details when selectedEvent changes
+  const fetchEventDetails = useCallback(async () => {
+    if (!selectedEvent) return;
+    
+    try {
+      const response = await apiClient.get(`/events/${selectedEvent.id}`);
+      setEventDetails(response.data);
+    } catch (err) {
+      console.error("Failed to fetch event details:", err);
+      setError("Could not load event details.");
+    }
+  }, [selectedEvent]);
+
+  useEffect(() => {
+    if (selectedEvent) {
+      fetchEventDetails();
+    }
+  }, [selectedEvent, fetchEventDetails]);
+
+  // Polling effect: Refetch data every 5 seconds IF attendance is active
+  useEffect(() => {
+    if (isPolling && selectedEvent) {
+      const interval = setInterval(() => {
+        fetchEventDetails();
+      }, 5000); // Poll every 5 seconds
+      return () => clearInterval(interval);
+    }
+  }, [isPolling, selectedEvent, fetchEventDetails]);
+
+  const handleStartAttendance = async () => {
+    if (!selectedEvent) return;
+    
+    try {
+      const response = await apiClient.post(`/events/${selectedEvent.id}/attendance/start`);
+      setAttendanceCode(response.data.attendanceCode);
+      setIsCodeDialogOpen(true);
+      setIsPolling(true);
+    } catch (err) {
+      console.error("Failed to start attendance:", err);
+      setError(err.response?.data?.message || "Failed to start attendance session.");
+    }
+  };
+
+  const handleRefresh = () => {
+    fetchEventDetails();
+  };
+
+  // Calculate statistics from event details
+  const getStatistics = () => {
+    if (!eventDetails || !eventDetails.attendees) {
+      return { totalExpected: 0, present: 0, late: 0, absent: 0 };
+    }
+
+    const attendees = eventDetails.attendees;
+    const totalExpected = attendees.length;
+    const present = attendees.filter(att => att.status === 'PRESENT').length;
+    const late = attendees.filter(att => att.status === 'LATE').length;
+    const absent = attendees.filter(att => att.status === 'ABSENT' || att.status === 'PENDING').length;
+
+    return { totalExpected, present, late, absent };
+  };
+
+  const { totalExpected, present, late, absent } = getStatistics();
 
   const getStatusBadge = (status) => {
     const variants = {
-      present: { variant: "default", className: "bg-green-100 text-green-800 hover:bg-green-100" },
-      late: { variant: "secondary", className: "bg-yellow-100 text-yellow-800 hover:bg-yellow-100" },
-      absent: { variant: "destructive", className: "bg-red-100 text-red-800 hover:bg-red-100" },
-      checked_out: { variant: "outline", className: "bg-blue-100 text-blue-800 hover:bg-blue-100" }
+      PRESENT: { variant: "default", className: "bg-green-100 text-green-800 hover:bg-green-100" },
+      LATE: { variant: "secondary", className: "bg-yellow-100 text-yellow-800 hover:bg-yellow-100" },
+      ABSENT: { variant: "destructive", className: "bg-red-100 text-red-800 hover:bg-red-100" },
+      PENDING: { variant: "outline", className: "bg-gray-100 text-gray-800 hover:bg-gray-100" }
     };
     
-    const config = variants[status] || variants.absent;
+    const config = variants[status] || variants.PENDING;
     const labels = {
-      present: "Present",
-      late: "Late",
-      absent: "Absent",
-      checked_out: "Checked Out"
+      PRESENT: "Present",
+      LATE: "Late", 
+      ABSENT: "Absent",
+      PENDING: "Pending"
     };
 
     return (
       <Badge variant={config.variant} className={config.className}>
-        {labels[status]}
+        {labels[status] || status}
       </Badge>
     );
   };
@@ -142,6 +157,27 @@ export default function LiveAttendancePage() {
     return new Date(timeString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  if (isLoading) {
+    return (
+      <div className="container mx-auto py-8 px-4">
+        <div className="flex items-center justify-center">
+          <div className="text-lg">Loading events...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto py-8 px-4">
+        <Alert variant="destructive">
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto py-8 px-4">
       <div className="flex justify-between items-center mb-8">
@@ -161,15 +197,18 @@ export default function LiveAttendancePage() {
           <CardTitle>Select Event</CardTitle>
         </CardHeader>
         <CardContent>
-          <Select value={selectedEvent.id.toString()} onValueChange={(value) => {
-            const event = mockEvents.find(e => e.id.toString() === value);
-            if (event) setSelectedEvent(event);
-          }}>
+          <Select 
+            value={selectedEvent?.id?.toString() || ""} 
+            onValueChange={(value) => {
+              const event = events.find(e => e.id.toString() === value);
+              if (event) setSelectedEvent(event);
+            }}
+          >
             <SelectTrigger className="w-full">
               <SelectValue placeholder="Select an event to monitor" />
             </SelectTrigger>
             <SelectContent>
-              {mockEvents.map(event => (
+              {events.map(event => (
                 <SelectItem key={event.id} value={event.id.toString()}>
                   <div className="flex items-center justify-between w-full">
                     <span>{event.title}</span>
@@ -183,30 +222,37 @@ export default function LiveAttendancePage() {
       </Card>
 
       {/* Event Details */}
-      <Card className="mb-6">
-        <CardHeader>
-          <div className="flex justify-between items-start">
-            <div>
-              <CardTitle className="text-xl">{selectedEvent.title}</CardTitle>
-              <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
-                <div className="flex items-center gap-1">
-                  <Users className="h-4 w-4" />
-                  <span>{selectedEvent.group.name}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <MapPin className="h-4 w-4" />
-                  <span>{selectedEvent.venue.name}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Clock className="h-4 w-4" />
-                  <span>{formatTime(selectedEvent.startTime)} - {formatTime(selectedEvent.endTime)}</span>
+      {selectedEvent && (
+        <Card className="mb-6">
+          <CardHeader>
+            <div className="flex justify-between items-start">
+              <div>
+                <CardTitle className="text-xl">{selectedEvent.title}</CardTitle>
+                <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
+                  <div className="flex items-center gap-1">
+                    <Users className="h-4 w-4" />
+                    <span>{selectedEvent.group?.name || 'No Group'}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <MapPin className="h-4 w-4" />
+                    <span>{selectedEvent.venue?.name || 'No Venue'}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Clock className="h-4 w-4" />
+                    <span>{formatTime(selectedEvent.startTime)} - {formatTime(selectedEvent.endTime)}</span>
+                  </div>
                 </div>
               </div>
+              <div className="flex items-center gap-2">
+                {getEventStatusBadge(selectedEvent)}
+                <Button onClick={handleStartAttendance} className="bg-blue-600 hover:bg-blue-700">
+                  Start Attendance
+                </Button>
+              </div>
             </div>
-            {getEventStatusBadge(selectedEvent)}
-          </div>
-        </CardHeader>
-      </Card>
+          </CardHeader>
+        </Card>
+      )}
 
       {/* Attendance Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -262,69 +308,88 @@ export default function LiveAttendancePage() {
         <CardHeader>
           <div className="flex justify-between items-center">
             <CardTitle>Attendance Details</CardTitle>
-            <Button variant="outline" size="sm">
-              <Clock className="h-4 w-4 mr-2" />
+            <Button variant="outline" size="sm" onClick={handleRefresh}>
+              <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
             </Button>
           </div>
         </CardHeader>
         <CardContent>
-          {eventAttendances.length === 0 ? (
+          {!eventDetails || !eventDetails.attendees || eventDetails.attendees.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-500">No attendees registered for this event</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-4 font-medium">Name</th>
-                    <th className="text-left py-3 px-4 font-medium">Email</th>
-                    <th className="text-left py-3 px-4 font-medium">Status</th>
-                    <th className="text-left py-3 px-4 font-medium">Check-in Time</th>
-                    <th className="text-left py-3 px-4 font-medium">Check-out Time</th>
-                    <th className="text-left py-3 px-4 font-medium">Location Verified</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {eventAttendances.map(attendance => (
-                    <tr key={attendance.id} className="border-b hover:bg-gray-50">
-                      <td className="py-3 px-4">
-                        <div className="font-medium">{attendance.user.name}</div>
-                      </td>
-                      <td className="py-3 px-4 text-gray-600">
-                        {attendance.user.email}
-                      </td>
-                      <td className="py-3 px-4">
-                        {getStatusBadge(attendance.status)}
-                      </td>
-                      <td className="py-3 px-4">
-                        {formatTime(attendance.checkInTime)}
-                      </td>
-                      <td className="py-3 px-4">
-                        {attendance.checkOutTime ? formatTime(attendance.checkOutTime) : "Still present"}
-                      </td>
-                      <td className="py-3 px-4">
-                        {attendance.location ? (
-                          <div className="flex items-center gap-1 text-green-600">
-                            <CheckCircle className="h-4 w-4" />
-                            <span className="text-sm">Verified</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1 text-red-600">
-                            <XCircle className="h-4 w-4" />
-                            <span className="text-sm">Not verified</span>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
+            <div className="border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Marked At</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {eventDetails.attendees.map(attendee => (
+                    <TableRow key={attendee.id}>
+                      <TableCell className="font-medium">
+                        {attendee.firstName} {attendee.lastName}
+                      </TableCell>
+                      <TableCell className="text-gray-600">
+                        {attendee.email}
+                      </TableCell>
+                      <TableCell>
+                        {getStatusBadge(attendee.status)}
+                      </TableCell>
+                      <TableCell>
+                        {attendee.markedAt ? new Date(attendee.markedAt).toLocaleTimeString() : 'N/A'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          disabled={attendee.status === 'PRESENT'}
+                        >
+                          Mark Manually
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Attendance Code Dialog */}
+      <Dialog open={isCodeDialogOpen} onOpenChange={setIsCodeDialogOpen}>
+        <DialogContent className="sm:max-w-md text-center">
+          <DialogHeader>
+            <DialogTitle className="text-2xl">Attendance is Live</DialogTitle>
+            <DialogDescription>
+              Attendees should enter this code in their portal.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-8">
+            <p className="text-6xl font-bold tracking-widest bg-gray-100 rounded-md p-4">
+              {attendanceCode || "..."}
+            </p>
+          </div>
+          <p className="text-sm text-gray-500">This code will expire in 90 seconds.</p>
+          <Button 
+            variant="outline" 
+            onClick={() => {
+              setIsCodeDialogOpen(false);
+              setIsPolling(false);
+            }}
+          >
+            Close
+          </Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
