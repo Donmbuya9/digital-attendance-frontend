@@ -22,6 +22,15 @@ export default function MyEventsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
   const [locationStatus, setLocationStatus] = useState('checking'); // 'checking', 'in-range', 'out-of-range', 'error'
+  const [successMessage, setSuccessMessage] = useState(''); // Success message state
+  const [markedEvents, setMarkedEvents] = useState(() => {
+    // Initialize from localStorage
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('markedEvents');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    }
+    return new Set();
+  });
 
   // Utility function to calculate distance between two points
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -75,7 +84,18 @@ export default function MyEventsPage() {
       
       console.log('Attendance marked successfully:', response);
       
-      // Success! Refresh the events list to show the 'PRESENT' status
+      // Mark this event as completed locally
+      setMarkedEvents(prev => {
+        const newSet = new Set([...prev, selectedEventId]);
+        // Persist to localStorage
+        localStorage.setItem('markedEvents', JSON.stringify([...newSet]));
+        return newSet;
+      });
+      
+      // Show success message
+      setSuccessMessage('Attendance marked successfully!');
+      
+      // Success! Refresh the events list
       await fetchMyEvents();
       
       // Close the dialog and reset form
@@ -85,6 +105,11 @@ export default function MyEventsPage() {
       setSelectedEvent(null);
       setUserLocation(null);
       setLocationStatus('checking');
+      
+      // Clear success message after 5 seconds
+      setTimeout(() => {
+        setSuccessMessage('');
+      }, 5000);
     } catch (err) {
       console.error("Attendance marking failed:", err);
       setDialogError(err.response?.data?.message || "Failed to mark attendance. Please try again.");
@@ -186,7 +211,27 @@ export default function MyEventsPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <h1 className="text-3xl font-bold mb-6">My Events</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">My Events</h1>
+        <Button 
+          variant="outline" 
+          onClick={fetchMyEvents}
+          disabled={isLoading}
+          className="text-sm"
+        >
+          {isLoading ? 'Refreshing...' : 'Refresh'}
+        </Button>
+      </div>
+      
+      {/* Success Message */}
+      {successMessage && (
+        <Alert className="mb-6 bg-green-50 border-green-200">
+          <AlertDescription className="text-green-800 font-semibold flex items-center gap-2">
+            <span className="text-green-600">✓</span>
+            {successMessage}
+          </AlertDescription>
+        </Alert>
+      )}
       
       {myEvents.length === 0 ? (
         <Card>
@@ -212,10 +257,13 @@ export default function MyEventsPage() {
                     )}
                   </div>
                   <div className="text-right">
-                    {event.myAttendanceStatus === 'PRESENT' ? (
-                      <div className="text-green-600 font-semibold flex items-center gap-2">
-                        <span>Attendance Marked</span>
-                        <span className="text-green-500">✓</span>
+                    {markedEvents.has(event.id) ? (
+                      <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                        <div className="text-green-700 font-semibold flex items-center gap-2">
+                          <span className="text-green-600 text-lg">✓</span>
+                          <span>Attendance Marked</span>
+                        </div>
+                        <div className="text-green-600 text-xs mt-1">You're all set!</div>
                       </div>
                     ) : (
                       isEventActive(event) ? (
