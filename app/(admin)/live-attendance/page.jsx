@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { attendanceService } from "@/services/api";
 import apiClient from "@/services/apiClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -84,8 +85,8 @@ export default function LiveAttendancePage() {
     if (!selectedEvent) return;
     
     try {
-      const response = await apiClient.post(`/events/${selectedEvent.id}/attendance/start`);
-      setAttendanceCode(response.data.attendanceCode);
+      const data = await attendanceService.startAttendance(selectedEvent.id);
+      setAttendanceCode(data.attendanceCode);
       setIsCodeDialogOpen(true);
       setIsPolling(true);
     } catch (err) {
@@ -96,6 +97,16 @@ export default function LiveAttendancePage() {
 
   const handleRefresh = () => {
     fetchEventDetails();
+  };
+
+  const handleManualOverride = async (userId) => {
+    try {
+      await attendanceService.manualOverride(selectedEvent.id, userId);
+      await fetchEventDetails(); // Refresh data to show updated status
+    } catch (error) {
+      console.error('Manual override failed:', error);
+      setError(error.response?.data?.message || 'Failed to manually mark attendance');
+    }
   };
 
   // Calculate statistics from event details
@@ -351,6 +362,7 @@ export default function LiveAttendancePage() {
                           variant="outline" 
                           size="sm" 
                           disabled={attendee.status === 'PRESENT'}
+                          onClick={() => handleManualOverride(attendee.id)}
                         >
                           Mark Manually
                         </Button>

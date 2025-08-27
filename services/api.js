@@ -149,25 +149,39 @@ export const eventService = {
 
 // Attendance service functions
 export const attendanceService = {
-  // Check in to an event
-  checkIn: async (eventId, latitude, longitude) => {
-    const response = await apiClient.post(`/attendance/checkin`, {
-      eventId,
+  // Mark attendance for an event
+  markAttendance: async (eventId, attendanceCode, latitude, longitude) => {
+    const response = await apiClient.post(`/events/${eventId}/attendance/mark`, {
+      attendanceCode,
       latitude,
       longitude,
     });
     return response.data;
   },
 
-  // Get attendance for an event
-  getEventAttendance: async (eventId) => {
-    const response = await apiClient.get(`/attendance/events/${eventId}`);
+  // Start attendance window for an event (admin only)
+  startAttendance: async (eventId) => {
+    const response = await apiClient.post(`/events/${eventId}/attendance/start`);
     return response.data;
   },
 
-  // Get user's attendance history
-  getUserAttendance: async () => {
-    const response = await apiClient.get('/attendance/my-attendance');
+  // Manual override for attendance (admin only)
+  manualOverride: async (eventId, userId) => {
+    const response = await apiClient.post(`/events/${eventId}/attendance/manual-override`, {
+      userId
+    });
+    return response.data;
+  },
+
+  // Get attendance for an event
+  getEventAttendance: async (eventId) => {
+    const response = await apiClient.get(`/events/${eventId}`);
+    return response.data;
+  },
+
+  // Get attendee's events
+  getMyEvents: async () => {
+    const response = await apiClient.get('/attendee/events');
     return response.data;
   },
 };

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import apiClient from "@/services/apiClient";
+import { attendanceService } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -18,37 +18,30 @@ export default function MyEventsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dialogError, setDialogError] = useState('');
   const [selectedEventId, setSelectedEventId] = useState(null);
+  const [selectedEvent, setSelectedEvent] = useState(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [userLocation, setUserLocation] = useState(null);
+  const [locationStatus, setLocationStatus] = useState('checking'); // 'checking', 'in-range', 'out-of-range', 'error'
+
+  // Utility function to calculate distance between two points
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // Earth's radius in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c * 1000; // Distance in meters
+  };
 
   const fetchMyEvents = async () => {
     try {
-      const response = await apiClient.get("/attendee/events");
-      setMyEvents(response.data);
+      const data = await attendanceService.getMyEvents();
+      setMyEvents(data);
     } catch (err) {
       console.error("Failed to fetch events:", err);
-      // For testing without backend, use mock data
-      const mockEvents = [
-        {
-          id: '1',
-          title: 'Weekly Team Meeting',
-          description: 'Regular team sync-up session',
-          startTime: new Date().toISOString(), // Current time - should be active
-          endTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(), // 2 hours from now
-          venue: { name: 'Conference Room A' },
-          myAttendanceStatus: 'PENDING'
-        },
-        {
-          id: '2',
-          title: 'Project Review Session',
-          description: 'Monthly project review',
-          startTime: '2025-08-27T14:00:00Z',
-          endTime: '2025-08-27T16:00:00Z',
-          venue: { name: 'Main Auditorium' },
-          myAttendanceStatus: 'PRESENT'
-        }
-      ];
-      setMyEvents(mockEvents);
-      setError('Using mock data - backend not available');
+      setError('Failed to load events. Please try again later.');
     } finally {
       setIsLoading(false);
     }
@@ -60,7 +53,10 @@ export default function MyEventsPage() {
 
   const handleSubmitAttendance = async (e) => {
     e.preventDefault();
-    if (!selectedEventId) return;
+    if (!selectedEventId || !userLocation) {
+      setDialogError('Location is required for attendance marking.');
+      return;
+    }
     
     console.log('Starting attendance submission for event:', selectedEventId);
     console.log('Attendance code:', code);
@@ -68,82 +64,33 @@ export default function MyEventsPage() {
     setIsSubmitting(true);
     setDialogError('');
 
-    if (!navigator.geolocation) {
-      setDialogError("Geolocation is not supported by your browser.");
+    try {
+      console.log('Submitting to API with location:', userLocation);
+      const response = await attendanceService.markAttendance(
+        selectedEventId,
+        code,
+        userLocation.latitude,
+        userLocation.longitude
+      );
+      
+      console.log('Attendance marked successfully:', response);
+      
+      // Success! Refresh the events list to show the 'PRESENT' status
+      await fetchMyEvents();
+      
+      // Close the dialog and reset form
+      setIsDialogOpen(false);
+      setCode('');
+      setSelectedEventId(null);
+      setSelectedEvent(null);
+      setUserLocation(null);
+      setLocationStatus('checking');
+    } catch (err) {
+      console.error("Attendance marking failed:", err);
+      setDialogError(err.response?.data?.message || "Failed to mark attendance. Please try again.");
+    } finally {
       setIsSubmitting(false);
-      return;
     }
-
-    console.log('Requesting geolocation...');
-    
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        console.log('Got location:', { latitude, longitude });
-        
-        try {
-          console.log('Submitting to API:', `/events/${selectedEventId}/attendance/mark`);
-          const response = await apiClient.post(`/events/${selectedEventId}/attendance/mark`, {
-            attendanceCode: code,
-            latitude,
-            longitude,
-          });
-          
-          console.log('Attendance marked successfully:', response.data);
-          
-          // Success! Refresh the events list to show the 'PRESENT' status
-          await fetchMyEvents();
-          
-          // Close the dialog and reset form
-          setIsDialogOpen(false);
-          setCode('');
-          setSelectedEventId(null);
-        } catch (err) {
-          console.error("Attendance marking failed:", err);
-          // For testing without backend, simulate success if code is "TEST123"
-          if (code.toUpperCase() === 'TEST123') {
-            console.log('Using test code - simulating success');
-            setIsDialogOpen(false);
-            setCode('');
-            setSelectedEventId(null);
-            // Update the event status locally for testing
-            setMyEvents(prev => prev.map(event => 
-              event.id === selectedEventId 
-                ? { ...event, myAttendanceStatus: 'PRESENT' }
-                : event
-            ));
-          } else {
-            setDialogError(err.response?.data?.message || "Failed to mark attendance. Try code 'TEST123' for testing.");
-          }
-        } finally {
-          setIsSubmitting(false);
-        }
-      },
-      (error) => {
-        console.error("Geolocation error:", error);
-        let errorMessage = "Could not get your location. Please enable location services.";
-        
-        switch(error.code) {
-          case error.PERMISSION_DENIED:
-            errorMessage = "Location access denied. Please allow location access and try again.";
-            break;
-          case error.POSITION_UNAVAILABLE:
-            errorMessage = "Location information is unavailable.";
-            break;
-          case error.TIMEOUT:
-            errorMessage = "Location request timed out.";
-            break;
-        }
-        
-        setDialogError(errorMessage);
-        setIsSubmitting(false);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 60000
-      }
-    );
   };
 
   const isEventActive = (event) => {
@@ -154,17 +101,66 @@ export default function MyEventsPage() {
   };
 
   const openAttendanceDialog = (eventId) => {
+    const event = myEvents.find(e => e.id === eventId);
     setSelectedEventId(eventId);
+    setSelectedEvent(event);
     setIsDialogOpen(true);
     setDialogError('');
     setCode('');
+    setUserLocation(null);
+    setLocationStatus('checking');
+    
+    // Get user location immediately when dialog opens
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          setUserLocation({ latitude, longitude });
+          
+          // Check if user is in range (note: attendee events may not have venue coordinates)
+          if (event?.venue?.latitude && event?.venue?.longitude && event?.venue?.radius) {
+            const distance = calculateDistance(
+              latitude, 
+              longitude, 
+              event.venue.latitude, 
+              event.venue.longitude
+            );
+            
+            if (distance <= event.venue.radius) {
+              setLocationStatus('in-range');
+            } else {
+              setLocationStatus('out-of-range');
+            }
+          } else {
+            // If venue coordinates aren't available, just show location detected
+            setLocationStatus('location-detected');
+          }
+        },
+        (error) => {
+          console.error("Geolocation error:", error);
+          setLocationStatus('error');
+          setDialogError('Could not get your location. Please enable location services.');
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 60000
+        }
+      );
+    } else {
+      setLocationStatus('error');
+      setDialogError('Geolocation is not supported by your browser.');
+    }
   };
 
   const closeAttendanceDialog = () => {
     setIsDialogOpen(false);
     setSelectedEventId(null);
+    setSelectedEvent(null);
     setCode('');
     setDialogError('');
+    setUserLocation(null);
+    setLocationStatus('checking');
   };
 
   if (isLoading) {
@@ -177,7 +173,7 @@ export default function MyEventsPage() {
     );
   }
   
-  if (error && !error.includes('mock data')) {
+  if (error) {
     return (
       <div className="max-w-4xl mx-auto">
         <Alert variant="destructive">
@@ -190,15 +186,6 @@ export default function MyEventsPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      {error && error.includes('mock data') && (
-        <Alert className="mb-6 bg-blue-50 border-blue-200">
-          <AlertDescription>
-            🧪 <strong>Test Mode:</strong> Using mock data since backend is not available. 
-            Use code "TEST123" to simulate successful attendance marking.
-          </AlertDescription>
-        </Alert>
-      )}
-      
       <h1 className="text-3xl font-bold mb-6">My Events</h1>
       
       {myEvents.length === 0 ? (
@@ -271,19 +258,56 @@ export default function MyEventsPage() {
             <DialogHeader>
               <DialogTitle>Mark Attendance</DialogTitle>
               <DialogDescription>
-                Enter the 6-digit code provided by your administrator.
+                Enter the attendance code provided by your administrator.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
+              {/* Location Status Alert */}
+              {locationStatus === 'checking' && (
+                <Alert className="bg-blue-50 border-blue-200">
+                  <AlertDescription>📍 Checking your location...</AlertDescription>
+                </Alert>
+              )}
+              
+              {locationStatus === 'in-range' && (
+                <Alert className="bg-green-50 border-green-200">
+                  <AlertDescription>✅ You are within range of the venue</AlertDescription>
+                </Alert>
+              )}
+              
+              {locationStatus === 'out-of-range' && (
+                <Alert variant="destructive">
+                  <AlertDescription>⚠️ You are outside the venue range. Move closer to mark attendance.</AlertDescription>
+                </Alert>
+              )}
+              
+              {locationStatus === 'error' && (
+                <Alert variant="destructive">
+                  <AlertDescription>❌ Could not detect your location. Please enable location services.</AlertDescription>
+                </Alert>
+              )}
+              
+              {locationStatus === 'location-detected' && (
+                <Alert className="bg-blue-50 border-blue-200">
+                  <AlertDescription>📍 Location detected. Server will validate your proximity to the venue.</AlertDescription>
+                </Alert>
+              )}
+              
+              {locationStatus === 'no-venue-data' && (
+                <Alert className="bg-yellow-50 border-yellow-200">
+                  <AlertDescription>⚠️ Venue location data unavailable. Contact administrator.</AlertDescription>
+                </Alert>
+              )}
+
               <div className="grid gap-2">
                 <Label htmlFor="code">Attendance Code</Label>
                 <Input 
                   id="code" 
                   value={code} 
                   onChange={(e) => setCode(e.target.value.toUpperCase())} 
-                  placeholder="A1B2C3" 
+                  placeholder="304-898 or A1B2C3" 
                   className="text-2xl text-center tracking-widest h-14 font-mono"
-                  maxLength={6}
+                  maxLength={7}
                   required
                 />
               </div>
@@ -296,9 +320,6 @@ export default function MyEventsPage() {
                 <p>• Make sure you are at the event location</p>
                 <p>• Allow location access when prompted</p>
                 <p>• Enter the code exactly as shown</p>
-                {error && error.includes('mock data') && (
-                  <p className="text-blue-600">• 🧪 <strong>Test Mode:</strong> Use "TEST123" to test</p>
-                )}
               </div>
             </div>
             <DialogFooter className="gap-2">
@@ -312,7 +333,13 @@ export default function MyEventsPage() {
               </Button>
               <Button 
                 type="submit" 
-                disabled={isSubmitting || code.length !== 6}
+                disabled={
+                  isSubmitting || 
+                  (code.length !== 6 && code.length !== 7) ||
+                  locationStatus === 'checking' ||
+                  locationStatus === 'out-of-range' ||
+                  locationStatus === 'error'
+                }
                 className="min-w-[100px]"
               >
                 {isSubmitting ? 'Submitting...' : 'Submit'}
