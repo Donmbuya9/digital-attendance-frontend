@@ -1,40 +1,76 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { userService, venueService, groupService, eventService } from "@/services/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, MapPin, UserCheck, Calendar, TrendingUp } from "lucide-react";
+import { Users, MapPin, UserCheck, Calendar, AlertCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function AdminDashboard() {
   const { user } = useAuth();
+  const [stats, setStats] = useState({
+    users: 0,
+    venues: 0,
+    groups: 0,
+    events: 0
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const stats = [
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        setLoading(true);
+        const [usersData, venuesData, groupsData, eventsData] = await Promise.all([
+          userService.getAllUsers().catch(() => []),
+          venueService.getAllVenues().catch(() => []),
+          groupService.getAllGroups().catch(() => []),
+          eventService.getAllEvents().catch(() => [])
+        ]);
+
+        setStats({
+          users: usersData.length || 0,
+          venues: venuesData.length || 0,
+          groups: groupsData.length || 0,
+          events: eventsData.length || 0
+        });
+        setError('');
+      } catch (err) {
+        console.error("Failed to fetch dashboard stats:", err);
+        setError("Unable to load dashboard data. Please ensure the backend server is running.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, []);
+
+  const dashboardStats = [
     {
       title: "Total Users",
-      value: "156",
+      value: loading ? "..." : stats.users.toString(),
       description: "Active users in the system",
       icon: Users,
-      trend: "+12%",
     },
     {
       title: "Venues",
-      value: "8",
+      value: loading ? "..." : stats.venues.toString(),
       description: "Registered venues",
       icon: MapPin,
-      trend: "+2%",
     },
     {
       title: "Groups",
-      value: "24",
+      value: loading ? "..." : stats.groups.toString(),
       description: "Active groups",
       icon: UserCheck,
-      trend: "+8%",
     },
     {
       title: "Events",
-      value: "45",
-      description: "Events this month",
+      value: loading ? "..." : stats.events.toString(),
+      description: "Total events",
       icon: Calendar,
-      trend: "+15%",
     },
   ];
 
@@ -47,8 +83,15 @@ export default function AdminDashboard() {
         </p>
       </div>
 
+      {error && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
-        {stats.map((stat) => {
+        {dashboardStats.map((stat) => {
           const Icon = stat.icon;
           return (
             <Card key={stat.title}>
@@ -61,11 +104,6 @@ export default function AdminDashboard() {
                 <p className="text-xs text-muted-foreground">
                   {stat.description}
                 </p>
-                <div className="flex items-center mt-2">
-                  <TrendingUp className="h-3 w-3 text-green-500 mr-1" />
-                  <span className="text-xs text-green-500">{stat.trend}</span>
-                  <span className="text-xs text-muted-foreground ml-1">from last month</span>
-                </div>
               </CardContent>
             </Card>
           );
@@ -75,32 +113,32 @@ export default function AdminDashboard() {
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
-            <CardDescription>Latest events and updates</CardDescription>
+            <CardTitle>System Status</CardTitle>
+            <CardDescription>Backend connection and system health</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">New user registered</p>
-                  <p className="text-xs text-muted-foreground">2 minutes ago</p>
+              {error ? (
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-red-600">Backend Disconnected</p>
+                    <p className="text-xs text-muted-foreground">
+                      Please start the Spring Boot backend server at localhost:8080
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Event "Morning Lecture" completed</p>
-                  <p className="text-xs text-muted-foreground">1 hour ago</p>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-green-600">Backend Connected</p>
+                    <p className="text-xs text-muted-foreground">
+                      All systems operational
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">New venue "Conference Room B" added</p>
-                  <p className="text-xs text-muted-foreground">3 hours ago</p>
-                </div>
-              </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -112,15 +150,24 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              <div className="p-3 bg-muted rounded-lg hover:bg-muted/80 cursor-pointer transition-colors">
+              <div 
+                className="p-3 bg-muted rounded-lg hover:bg-muted/80 cursor-pointer transition-colors"
+                onClick={() => window.location.href = '/events'}
+              >
                 <p className="text-sm font-medium">Create New Event</p>
                 <p className="text-xs text-muted-foreground">Schedule a new attendance event</p>
               </div>
-              <div className="p-3 bg-muted rounded-lg hover:bg-muted/80 cursor-pointer transition-colors">
+              <div 
+                className="p-3 bg-muted rounded-lg hover:bg-muted/80 cursor-pointer transition-colors"
+                onClick={() => window.location.href = '/venues'}
+              >
                 <p className="text-sm font-medium">Add Venue</p>
                 <p className="text-xs text-muted-foreground">Register a new location</p>
               </div>
-              <div className="p-3 bg-muted rounded-lg hover:bg-muted/80 cursor-pointer transition-colors">
+              <div 
+                className="p-3 bg-muted rounded-lg hover:bg-muted/80 cursor-pointer transition-colors"
+                onClick={() => window.location.href = '/groups'}
+              >
                 <p className="text-sm font-medium">Manage Groups</p>
                 <p className="text-xs text-muted-foreground">Organize users into groups</p>
               </div>
